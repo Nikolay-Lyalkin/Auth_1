@@ -1,0 +1,79 @@
+version: "3.11.9"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: web_auth_user
+    container_name: web_auth_user
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./src:/app/src
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+
+  db:
+    image: postgres:16
+    container_name: db_auth_user
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    image: nginx:1.25.3
+    volumes:
+      - ./nginx.conf:/app/nginx.conf:ro
+      - ./configs:/app/configs/site.conf:ro
+      - static_volume:/app/staticfiles:ro
+    depends_on:
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_auth_user
+    ports:
+      - "6379:6379"
+    env_file:
+      - .env
+
+  tests:
+    image: web_auth_user
+    container_name: tests_auth
+    depends_on:
+      web:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    entrypoint: [ ]
+    command: >
+      sh -c "
+        echo '=== Running tests ===' &&
+        poetry run pytest tests/functional -v -s
+      "
+
+volumes:
+  postgres_data:
+  static_volume:
