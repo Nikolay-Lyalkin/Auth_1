@@ -2,12 +2,16 @@ from uuid import UUID
 
 import dotenv
 import user_agents
+from async_fastapi_jwt_auth import AuthJWT
 from fastapi import Depends, Request
+from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.postgres import get_session
 from src.models.user import LoginHistory
 from src.schemas.login_history import LoginHistoryCreateSchema, LoginHistoryResponseSchema
+from src.services.token import TokenService
 
 dotenv.load_dotenv()
 
@@ -88,6 +92,17 @@ class LoginHistoryService:
                 return "other"
         except:
             return "unknown"
+
+    async def get_login_history(self, user_id: str, token_service: TokenService, authorize: AuthJWT, redis: Redis):
+        """Получение истории входа пользователя"""
+        await token_service.get_token_from_redis(authorize, redis)
+
+        query = select(LoginHistory).where(LoginHistory.user_id == user_id)
+        result = await self.db.execute(query)
+        history = result.scalars().all()
+
+        if history:
+            return list(history)
 
 
 def get_login_history(db: AsyncSession = Depends(get_session)) -> LoginHistoryService:

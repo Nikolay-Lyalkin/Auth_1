@@ -4,3 +4,7 @@ class UserNotFound(Exception):
 
 class UserInDB(Exception):
     detail = "Пользователь с таким логином уже существует"
+
+
+class AuthException(Exception):
+    detail = "This operation is forbidden for you"

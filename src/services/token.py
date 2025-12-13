@@ -2,19 +2,37 @@ from datetime import datetime
 
 from async_fastapi_jwt_auth import AuthJWT
 from async_fastapi_jwt_auth.exceptions import AuthJWTException
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src.db.postgres import get_session
+from src.models.user import User
 
 
 class TokenService:
 
-    async def get_current_user_required(self, authorize: AuthJWT) -> dict:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_current_user_required(self, authorize: AuthJWT, user_id: str) -> dict:
         """Получить пользователя (обязательная авторизация)"""
 
         try:
             await authorize.jwt_required()
-            user_id = await authorize.get_jwt_subject()
-            return {"user_id": user_id, "authenticated": True}
+            user_id_from_jwt = await authorize.get_jwt_subject()
+
+            if user_id_from_jwt == user_id:
+                return {"user_id": user_id_from_jwt, "authenticated": True}
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="У вас нет прав на доступ к данным этого пользователя"
+            )
+
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -25,8 +43,12 @@ class TokenService:
     async def generate_access_token(self, user_id: str, authorize: AuthJWT):
         """Генерация токена с дополнительными claims"""
 
+        stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one()
+
         # Дополнительные данные в токене
-        additional_claims = {"user_id": user_id, "is_active": True, "token_type": "access"}
+        additional_claims = {"user_id": user_id, "is_active": True, "token_type": "access", "role": user.role.name}
 
         access_token = await authorize.create_access_token(
             subject=user_id, user_claims=additional_claims, expires_time=86400 * 7  # 7 дней
@@ -36,7 +58,12 @@ class TokenService:
 
     async def generate_refresh_token(self, user_id: str, authorize: AuthJWT):
         """Генерация refresh токена"""
-        additional_claims = {"user_id": user_id, "token_type": "refresh"}
+
+        stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one()
+
+        additional_claims = {"user_id": user_id, "token_type": "refresh", "role": user.role.name}
 
         refresh_token = await authorize.create_refresh_token(
             subject=user_id, user_claims=additional_claims, expires_time=86400 * 30  # 30 дней
@@ -88,12 +115,13 @@ class TokenService:
         """Проверяет есть ли токен в блэклисте"""
 
         jwt_data = await authorize.get_raw_jwt()
-        if await redis.exists(jwt_data.get("jti")):
+        if await redis.get(jwt_data.get("jti")):
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is blacklisted. Please login again."
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Пожалуйста пройдите авторизацию"
             )
         return True
 
 
-def get_token_service() -> TokenService:
-    return TokenService()
+def get_token_service(db: AsyncSession = Depends(get_session)) -> TokenService:
+    result = TokenService(db)
+    return result

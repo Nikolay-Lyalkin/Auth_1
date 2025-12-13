@@ -81,23 +81,28 @@ async def test_auth(mock_db_session, mock_user, user_auth_data, mock_request, to
     ],
 )
 async def test_update_user_scenarios(
-    scenario: dict, mock_db_session, mock_token_service, mock_authorize, mock_redis, mock_user
+    scenario: dict, mock_db_session, mock_token_service, mock_authorize, mock_redis
 ):
-    """Тест различных сценариев обновления пользователя"""
+    """Тест сценария обновления пользователя"""
 
     user_service = UserService(mock_db_session)
 
+    mock_user = MagicMock()
     mock_user.id = uuid.UUID(scenario["user_id"])
     mock_user.login = "original_login"
     mock_user.set_password = MagicMock()
 
-    mock_db_result = AsyncMock()
-    mock_db_result.scalar_one_or_none = AsyncMock(return_value=mock_user)
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalar_one_or_none = MagicMock(return_value=mock_user)
 
-    mock_db_session.execute = AsyncMock(return_value=mock_db_result)
+    mock_db_session.execute = AsyncMock(return_value=mock_execute_result)
+
+    mock_db_session.commit = AsyncMock()
+    mock_db_session.refresh = AsyncMock()
+
+    mock_token_service.get_token_from_redis = AsyncMock()
 
     current_user = {"user_id": scenario["current_user_id"], "authenticated": True}
-
     update_schema = UserUpdateSchema(**scenario["update_data"])
 
     result = await user_service.update_user(
@@ -111,17 +116,17 @@ async def test_update_user_scenarios(
 
     assert result == mock_user
 
-    mock_token_service.get_token_from_redis.assert_called_once_with(mock_authorize, mock_redis)
-    mock_db_session.execute.assert_called_once()
-    mock_db_result.scalar_one_or_none.assert_called_once()
+    mock_token_service.get_token_from_redis.assert_awaited_once_with(mock_authorize, mock_redis)
+    mock_db_session.execute.assert_awaited_once()
+
+    mock_execute_result.scalar_one_or_none.assert_called_once()
 
     if scenario["expect_update"]:
-
         if "new_login" in scenario["update_data"]:
             assert mock_user.login == scenario["update_data"]["new_login"]
 
         if "new_password" in scenario["update_data"]:
             mock_user.set_password.assert_called_once_with(scenario["update_data"]["new_password"])
 
-        mock_db_session.commit.assert_called_once()
-        mock_db_session.refresh.assert_called_once_with(mock_user)
+        mock_db_session.commit.assert_awaited_once()
+        mock_db_session.refresh.assert_awaited_once_with(mock_user)

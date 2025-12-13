@@ -3,28 +3,32 @@ import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
-load_dotenv()
-
 
 class Settings(BaseSettings):
 
     # Project
-    PROJECT_NAME: str = "auth_users"
+    projrct_name: str = "auth_users"
 
     # Redis
-    REDIS_HOST: str = "redis"
-    REDIS_PORT: int = 6379
+    redis_host: str = "redis"
+    redis_port: int = 6379
 
     # PostgreSQL
-    POSTGRES_DB: str = "auth_database"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "password"
-    DATABASE_HOST: str = "db"
-    DATABASE_PORT: int = 5432
+    postgres_db: str = "auth_database"
+    postgres_user: str = "postgres"
+    postgres_password: str = "password"
+    database_host: str = "db"
+    database_port: int = 5432
 
     # AuthJwt
-    authjwt_secret_key: str = os.getenv("AUTHJWT_SECRET_KEY")
-    authjwt_algorithm: str = os.getenv("AUTHJWT_ALGORITHM")
+    authjwt_secret_key: str = "authjwt_secret_key"
+    authjwt_algorithm: str = "authjwt_algorithm"
+
+    allowed_hosts: str = "127.0.0.1, localhost, web, 0.0.0.0"
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
 
 settings = Settings()

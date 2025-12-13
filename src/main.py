@@ -7,6 +7,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import ORJSONResponse
 from redis.asyncio import Redis
 
+from cli import init_superuser_data
 from src.core.config import settings
 from src.db import redis_db
 from src.handlers.user_roles import router as user_role_router
@@ -21,14 +22,13 @@ def get_config():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    redis_db.redis = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, decode_responses=True)
+    redis_db.redis = Redis(host=settings.redis_host, port=settings.redis_port, db=0, decode_responses=True)
     yield
     # Shutdown
 
-
 # Сначала создаем app
 app = FastAPI(
-    title=settings.PROJECT_NAME,
+    title=settings.projrct_name,
     docs_url="/openapi",
     openapi_url="/openapi.json",
     default_response_class=ORJSONResponse,
@@ -45,7 +45,7 @@ def custom_openapi() -> dict[str, Any]:
     openapi_schema = get_openapi(
         title=app.title,
         version="1.0.0",
-        description=f"{settings.PROJECT_NAME} API with JWT authentication",
+        description=f"{settings.projrct_name} API with JWT authentication",
         routes=app.routes,
     )
 

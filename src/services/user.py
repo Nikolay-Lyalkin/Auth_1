@@ -78,8 +78,7 @@ class UserService:
 
         await token_service.get_token_from_redis(authorize, redis)
         user = await self.db.execute(select(User).where(User.id == user_id))
-        user = await user.scalar_one_or_none()
-
+        user = user.scalar_one_or_none()
         if not user:
             raise UserNotFound("User not found")
 
@@ -106,9 +105,9 @@ class UserService:
             await token_service.get_token_from_redis(authorize, redis)
             if str(user_id) == current_user.get("user_id"):
                 add_token_blacklist = await token_service.add_token_in_blacklist(authorize, redis)
-            return {"message": "Successfully logged out"}
+            return {"message": "Вы вышли из профиля"}
         except AuthJWTException as e:
-            raise HTTPException(status_code=401, detail=f"Logout failed: {str(e)}")
+            raise HTTPException(status_code=401, detail=f"Ошибка выхода из профиля: {str(e)}")
 
 
 def get_user_service(db: AsyncSession = Depends(get_session)) -> UserService:
