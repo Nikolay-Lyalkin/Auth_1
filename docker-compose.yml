@@ -53,27 +53,6 @@ services:
     env_file:
       - .env
 
-  tests:
-    image: web_auth_user
-    container_name: tests_auth
-    depends_on:
-      web:
-        condition: service_started
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    env_file:
-      - .env
-    volumes:
-      - .:/app
-    entrypoint: [ ]
-    command: >
-      sh -c "
-        echo '=== Running tests ===' &&
-        poetry run pytest tests/functional -v -s
-      "
-
 volumes:
   postgres_data:
   static_volume:
