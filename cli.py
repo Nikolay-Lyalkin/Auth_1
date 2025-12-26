@@ -17,10 +17,7 @@ def create_role_superuser():
             return
 
         # Создаем новую роль
-        role = Role(
-            name="superuser",
-            description="Суперпользователь с полными правами"
-        )
+        role = Role(name="superuser", description="Суперпользователь с полными правами")
         db.add(role)
         db.commit()
         return role
@@ -33,6 +30,7 @@ def create_superuser():
 
         superuser = User(
             first_name="superuser",
+            email="superuser@mail.ru",
             last_name="superuser",
             login="superuser",
             password="superuser",
