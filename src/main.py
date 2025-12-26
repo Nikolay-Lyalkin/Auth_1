@@ -1,13 +1,19 @@
+import uuid
 from contextlib import asynccontextmanager
-from typing import Any
 
 from async_fastapi_jwt_auth import AuthJWT
 from fastapi import FastAPI
-from fastapi.openapi.utils import get_openapi
 from fastapi.responses import ORJSONResponse
+from opentelemetry import trace
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.semconv.resource import ResourceAttributes
 from redis.asyncio import Redis
+from fastapi import Request
 
-from cli import init_superuser_data
 from src.core.config import settings
 from src.db import redis_db
 from src.handlers.user_roles import router as user_role_router
@@ -26,6 +32,33 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
 
+
+def configure_tracer() -> None:
+    resource = Resource.create(
+        {
+            ResourceAttributes.SERVICE_NAME: "auth-service",
+        }
+    )
+
+    tracer_provider = TracerProvider(resource=resource)
+
+    tracer_provider.add_span_processor(
+        BatchSpanProcessor(
+            JaegerExporter(
+                agent_host_name="localhost",
+                agent_port=6831,
+            )
+        )
+    )
+    # Чтобы видеть трейсы в консоли
+    tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+    trace.set_tracer_provider(tracer_provider)
+
+
+configure_tracer()
+
+
 # Сначала создаем app
 app = FastAPI(
     title=settings.projrct_name,
@@ -35,37 +68,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-def custom_openapi() -> dict[str, Any]:
-    """Кастомная OpenAPI схема с поддержкой JWT аутентификации"""
-    if app.openapi_schema:
-        return app.openapi_schema
-
-    # Используем get_openapi вместо app.openapi() чтобы избежать рекурсии
-    openapi_schema = get_openapi(
-        title=app.title,
-        version="1.0.0",
-        description=f"{settings.projrct_name} API with JWT authentication",
-        routes=app.routes,
-    )
-
-    # Добавляем security схему для JWT аутентификации
-    openapi_schema.setdefault("components", {})
-    openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-            "description": "Enter JWT token as: **Bearer &lt;token&gt;**",
-        }
-    }
-
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
+FastAPIInstrumentor.instrument_app(app)
 
 
-# Применяем кастомную OpenAPI схему
-app.openapi = custom_openapi
+@app.middleware("http")
+async def before_request(request: Request, call_next):
+    # Получаем или создаем request_id
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+
+    # Добавляем в состояние запроса
+    request.state.request_id = request_id
+
+    # Обрабатываем запрос
+    response = await call_next(request)
+
+    # Добавляем в заголовки ответа
+    response.headers["X-Request-Id"] = request_id
+
+    return response
+
 
 app.include_router(user_router, prefix="", tags=["user"])
 app.include_router(user_role_router, prefix="", tags=["user_role"])

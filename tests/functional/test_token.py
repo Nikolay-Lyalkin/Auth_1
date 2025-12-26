@@ -55,13 +55,8 @@ async def test_generate_access_token(mock_db_session):
 
     mock_authorize.create_access_token.assert_called_once_with(
         subject=user_id,
-        user_claims={
-            "user_id": user_id,
-            "is_active": True,
-            "token_type": "access",
-            "role": "user"
-        },
-        expires_time=86400 * 7
+        user_claims={"user_id": user_id, "is_active": True, "token_type": "access", "role": "user"},
+        expires_time=86400 * 7,
     )
 
 
@@ -94,8 +89,9 @@ async def test_generate_refresh_token(mock_db_session):
     assert result == "mock.refresh.token.here"
 
     mock_authorize.create_refresh_token.assert_called_once_with(
-        subject=user_id, user_claims={"user_id": user_id, "token_type": "refresh", "role": "user"},
-        expires_time=86400 * 30  # 30 дней
+        subject=user_id,
+        user_claims={"user_id": user_id, "token_type": "refresh", "role": "user"},
+        expires_time=86400 * 30,  # 30 дней
     )
 
 
@@ -112,7 +108,7 @@ async def test_refresh_access_token(mock_db_session):
     mock_authorize.get_raw_jwt = AsyncMock(return_value={"token_type": "refresh"})
 
     with patch.object(
-            token_service, "generate_access_token", AsyncMock(return_value="new.access.token")
+        token_service, "generate_access_token", AsyncMock(return_value="new.access.token")
     ) as mock_generate:
         result = await token_service.refresh_access_token(mock_authorize)
 
@@ -135,7 +131,12 @@ async def test_add_token_in_blacklist_success(mock_db_session):
     mock_authorize = MagicMock()
     mock_redis = AsyncMock()
 
-    mock_jwt_data = {"jti": "unique-token-id-123", "exp": 1710000000, "sub": "123e4567-e89b-12d3-a456-426614174000", "role": "user"}
+    mock_jwt_data = {
+        "jti": "unique-token-id-123",
+        "exp": 1710000000,
+        "sub": "123e4567-e89b-12d3-a456-426614174000",
+        "role": "user",
+    }
 
     mock_authorize.get_raw_jwt = AsyncMock(return_value=mock_jwt_data)
 
@@ -153,9 +154,7 @@ async def test_add_token_in_blacklist_success(mock_db_session):
         expected_ttl = mock_jwt_data["exp"] - mock_current_time
         assert expected_ttl == 100
 
-        mock_redis.setex.assert_called_once_with(
-            mock_jwt_data["jti"], expected_ttl, mock_jwt_data["sub"]
-        )
+        mock_redis.setex.assert_called_once_with(mock_jwt_data["jti"], expected_ttl, mock_jwt_data["sub"])
 
 
 @pytest.mark.asyncio

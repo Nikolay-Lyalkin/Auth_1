@@ -1,4 +1,5 @@
 import dotenv
+import requests
 from async_fastapi_jwt_auth import AuthJWT
 from async_fastapi_jwt_auth.exceptions import AuthJWTException
 from fastapi import Depends, HTTPException, Request
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import UserNotFound, UserInDB
+from src.core.config import Settings
 from src.db.postgres import get_session
 from src.models.user import Role, User
 from src.schemas.users import UserAuthSchema, UserCreateSchema, UserUpdateSchema
@@ -27,9 +29,12 @@ class UserService:
 
         query = await self.db.execute(select(Role).filter(Role.name == role_name))
         user_role = query.scalar_one_or_none()
+        if user_data.password != user_data.password_again:
+            raise ValueError("Пароли не совпадают")
 
         user = User(
             login=user_data.login,
+            email=user_data.email,
             password=user_data.password,
             first_name=user_data.first_name,
             last_name=user_data.last_name,
@@ -53,7 +58,7 @@ class UserService:
     ):
         """Авторизация пользователя"""
         user_auth_dto = jsonable_encoder(user_auth)
-        query = select(User).where(User.login == str(user_auth_dto["login"]))
+        query = select(User).where(User.email == str(user_auth_dto["email"]))
         result = await self.db.execute(query)
         user = result.scalar_one_or_none()
 
@@ -108,6 +113,26 @@ class UserService:
             return {"message": "Вы вышли из профиля"}
         except AuthJWTException as e:
             raise HTTPException(status_code=401, detail=f"Ошибка выхода из профиля: {str(e)}")
+
+    async def get_yandex_redirect_url(self):
+        settings = Settings()
+        print(settings.yandex_redirect_url)
+        return settings.yandex_redirect_url
+
+    async def get_user_info(self, code: str) -> dict:
+        settings = Settings()
+        token_url = "https://oauth.yandex.ru/token"
+        data = {
+            "code": code,
+            "client_id": settings.yandex_client_id,
+            "client_secret": settings.yandex_client_secret,
+            "redirect_uri": settings.yandex_redirect_url,
+            "grant_type": "authorization_code",
+        }
+        response = requests.post(token_url, data=data)
+        access_token = response.json()["access_token"]
+        user_info = requests.get("https://login.yandex.ru/info?", headers={"Authorization": f"{access_token}"})
+        return user_info.json()
 
 
 def get_user_service(db: AsyncSession = Depends(get_session)) -> UserService:

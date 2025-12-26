@@ -24,17 +24,11 @@ def roles_required(roles_list: list[str]):
                 # Проверяем наличие роли в claims
                 user_role = jwt_data.get("role")
                 if not user_role:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Роль не найдена в токене"
-                    )
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Роль не найдена в токене")
 
                 # Проверяем разрешенные роли
                 if user_role not in roles_list:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Недостаточно прав"
-                    )
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
                 # Вызываем оригинальную функцию
                 return await func(*args, authorize=authorize, **kwargs)
@@ -42,10 +36,7 @@ def roles_required(roles_list: list[str]):
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Ошибка: {str(e)}"
-                )
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Ошибка: {str(e)}")
 
         return wrapper
 

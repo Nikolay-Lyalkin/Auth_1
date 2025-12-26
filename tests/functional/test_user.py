@@ -21,7 +21,7 @@ async def test_create_user(user_create_data):
     mock_user.id = 1
     mock_user.login = "test"
 
-    with patch.object(user_service, 'create_user') as mock_create_method:
+    with patch.object(user_service, "create_user") as mock_create_method:
         mock_create_method.return_value = mock_user
 
         result = await user_service.create_user(user_create_data)
@@ -80,9 +80,7 @@ async def test_auth(mock_db_session, mock_user, user_auth_data, mock_request, to
         }
     ],
 )
-async def test_update_user_scenarios(
-    scenario: dict, mock_db_session, mock_token_service, mock_authorize, mock_redis
-):
+async def test_update_user_scenarios(scenario: dict, mock_db_session, mock_token_service, mock_authorize, mock_redis):
     """Тест сценария обновления пользователя"""
 
     user_service = UserService(mock_db_session)

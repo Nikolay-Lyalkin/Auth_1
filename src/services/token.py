@@ -1,13 +1,16 @@
 from datetime import datetime
 
+import jwt
 from async_fastapi_jwt_auth import AuthJWT
 from async_fastapi_jwt_auth.exceptions import AuthJWTException
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.core.config import settings
 from src.db.postgres import get_session
 from src.models.user import User
 
@@ -27,8 +30,7 @@ class TokenService:
             if user_id_from_jwt == user_id:
                 return {"user_id": user_id_from_jwt, "authenticated": True}
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="У вас нет прав на доступ к данным этого пользователя"
+                status_code=status.HTTP_403_FORBIDDEN, detail="У вас нет прав на доступ к данным этого пользователя"
             )
 
         except HTTPException:
@@ -116,12 +118,58 @@ class TokenService:
 
         jwt_data = await authorize.get_raw_jwt()
         if await redis.get(jwt_data.get("jti")):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Пожалуйста пройдите авторизацию"
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Пожалуйста пройдите авторизацию")
         return True
+
+    def decode_token(token: str) -> dict | None:
+        """Функция декодирует токен"""
+        try:
+            return jwt.decode(token, settings.authjwt_secret_key, algorithms=[settings.authjwt_algorithm])
+        except Exception:
+            return None
 
 
 def get_token_service(db: AsyncSession = Depends(get_session)) -> TokenService:
     result = TokenService(db)
     return result
+
+
+class JWTBearer(HTTPBearer):
+    """
+    Класс - наследник fastapi.security.HTTPBearer. Рекомендуем исследовать этот класс.
+    Метод `__call__` класса HTTPBearer возвращает объект HTTPAuthorizationCredentials из заголовка `Authorization`
+
+    class HTTPAuthorizationCredentials(BaseModel):
+        scheme: str #  'Bearer'
+        credentials: str #  сам токен в кодировке Base64
+
+    FastAPI при использовании класса HTTPBearer добавит всё необходимое для авторизации в Swagger документацию.
+    """
+
+    def __init__(self, auto_error: bool = True):
+        super().__init__(auto_error=auto_error)
+
+    async def __call__(self, request: Request) -> dict:
+        """
+        Переопределение метода родительского класса HTTPBearer.
+        Логика проста: достаём токен из заголовка и декодируем его.
+        В результате возвращаем словарь из payload токена или выбрасываем исключение.
+        Так как далее объект этого класса будет использоваться как зависимость Depends(...),
+        то при этом будет вызван метод `__call__`.
+        """
+        credentials: HTTPAuthorizationCredentials = await super().__call__(request)
+        if not credentials:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid authorization code.")
+        if not credentials.scheme == "Bearer":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Only Bearer token might be accepted")
+        decoded_token = self.parse_token(credentials.credentials)
+        if not decoded_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or expired token.")
+        return decoded_token
+
+    @staticmethod
+    def parse_token(jwt_token: str) -> dict | None:
+        return TokenService.decode_token(jwt_token)
+
+
+security_jwt = JWTBearer()
